@@ -1,0 +1,395 @@
+---
+title: "Homework 10 R markdown"
+author: "Rita Miller"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+---
+```{r, setup, include=FALSE}
+#require(mosaic)   # Load additional packages here 
+
+# Some customization.  You can alter or delete as desired (if you know what you are doing).
+#trellis.par.set(theme=theme.mosaic()) # change default color scheme for lattice
+knitr::opts_chunk$set(
+  tidy=FALSE,     # display code as typed
+  size="small")   # slightly smaller font for code
+```
+#### Intellectual Property:  
+These problems are the intellectual property of the instructors and may not be reproduced outside of this course.
+
+Load additional packages here.
+```{r}
+library(NeuralNetTools)
+library(ISLR)
+library(nnet)
+library(caret)
+library(dplyr)
+library(ggformula)
+```
+## Problem 1: Modeling with an Artificial Neural Network
+In this problem, you will use an artificial neural network to model the type of orange juice that customers buy.  
+
+**Important**:  In our experience, if you use the correct code for this problem, your answers will be consistent with the autograder, regardless of your computer's processor.  If your answers do not match the autograder, please check your code first.  If it still doesn't work, make a private post on Piazza explaining where the discrepancy is.  ****Include your complete code for the problem in the post.
+
+### Question 1 **(3 points)**:
+
+**Data Set**: Load the **OJ** data set, which is in the **ISLR** library.  Set the random seed to 10.
+
+Use 5-fold CV with `caret` to build an artificial neural network with 1 hidden node and no weight decay, to model Purchase as a function of LoyalCH, SalePriceMM, and PriceDiff.  Tell `caret` to center and scale the data.
+
+Enter your R code below. 
+
+```{r, echo=TRUE}
+data("OJ")
+#str("OJ")
+#summary("OJ")
+#head("OJ")
+```
+**Code Answer**:
+```{r}
+data_used = OJ
+
+set.seed(10)
+ctrl = trainControl(method = "cv", number = 5)
+fit_OJ = train(Purchase ~ LoyalCH + SalePriceMM + PriceDiff,
+ data = data_used,
+method = "nnet",
+ tuneGrid = expand.grid(size = 1, decay = 0),
+ preProc = c("center", "scale"),
+ trace = FALSE,
+ trControl = ctrl)
+
+fit_OJ
+```
+```{r}
+#curiously checking if it converged and it did, the output is 0
+fit_OJ$finalModel$convergence
+```
+
+### Question 2 **(2 points)**:
+
+Make a plot of your neural network.  You do not need to label the edges with their weights. Use **Insert** -> **Image** to upload your graph to this question on Canvas.
+
+**Graph Answer**: 
+
+```{r}
+library(NeuralNetTools)
+par(mar = c(.1,.1,.1,.1))
+plotnet(fit_OJ)
+```
+#image saved in pictures
+```{r}
+#for interest
+summary(fit_OJ)#view the weights of each edge
+```
+```{r}
+#for interest
+fit_OJ$finalModel$wts #see more decimal places of accuracy in the weights 
+```
+Positive weights correspond to black edges in the graph.
+Negative weights correspond to gray edges in the graph.
+The thickness of each edge in the graph corresponds to the magnitude (absolute value) of each weight.
+
+### Question 3 **(3 points)**:
+
+Fill in the blanks to interpret the graph from the previous problem:  
+
+If we hold SalePriceMM and PriceDiff constant and increase LoyalCH, the output of the hidden node (increases/*decreases).  
+This causes the predicted probability of Purchase to (increase/*decrease).  Therefore, it makes sense that the predicted response value is the probability of purchasing (Minute Maid/*Citrus Hill).
+
+**Note**: It may help to review the data dictionary using **?OJ**. 
+If we work our way backward from the output node of purchasing Minute Maid to the hidden node H1, we clearly see a thick gray line between these two nodes. This represents a large negative weight that's applied to values outputted from the H1 node. From here, we work our way backward once more to the input layer, and we notice the largest connection to H1 is LoyalCH, with a thick black line. This represents a large positive weight to the LoyalCH value. 
+
+Putting this altogether, the larger the loyalty for Citrus Hill at the input layer, means at the hidden node output the predicted probability needs to be smaller (applying a large negative weight), which in turn favors makes the response as Citrus Hill over Minute Maid at the output node.
+```{r}
+#for interst
+library(NeuralNetTools)
+    par(mar = c(.1,.1,.1,.1))
+    plotnet(fit_OJ)
+text(-.15, .78, round(fit_OJ$finalModel$wts[1], 2))
+     text(-.44, .73, round(fit_OJ$finalModel$wts[2], 2))
+     text(-.36, .53, round(fit_OJ$finalModel$wts[3], 2))
+     text(-.36, .32, round(fit_OJ$finalModel$wts[4], 2))
+     text(.68, .75, round(fit_OJ$finalModel$wts[5], 2))
+     text(.40, .53, round(fit_OJ$finalModel$wts[6], 2))
+#dev.off     
+```
+```{r}
+#for interest
+par(mar = c(5, 4, 4, 2) + 0.1) # Use the default margins to make the axes visible
+    plotnet(fit_OJ)
+    axis(1, at = seq(-1, 1, by = .1))
+    axis(2, at = seq(0, 1, by = .1))
+```
+
+**Fill-in-the-blank Answer (AUTOGRADED on Canvas)**
+decrease
+decrease
+Citrus Hill
+
+
+### Question 4 **(1 point)**:	
+
+What is the predicted probability that the first person in the data set will purchase Minute Maid? Enter your answer to 3 decimal places.
+```{r}
+probabilities = predict(fit_OJ, type = "prob")
+#head(predict(fit_OJ))
+
+head(predict(fit_OJ, type = "prob"))[1,]
+#the predict function to view either the predicted categories or the predicted probabilities of each of our observations in the data set.
+```
+
+**4-Numeric Answer (AUTOGRADED on Canvas)**: 0.333 
+
+### Question 5 **(2 points)**:(similar to Webwork # 8a)
+If we use a probability threshold of .5 to classify predicted purchases, what is the classification error rate for this data set? Enter your answer to 4 digits after the decimal place.
+(prob threshold of .5 is the default)
+
+```{r}
+#Start by using the predict() function to classify each customer into the most likely category
+OJ_class = predict(fit_OJ)
+
+#Make the confusion matrix. What is the misclassification rate (that is, the classification error rate) on the 
+#entire dataset? (Enter your answer as a proportion between 0 and 1.)
+conf_mat = table(predicted = OJ_class, actual = OJ$Purchase)
+conf_mat
+1-sum(diag(conf_mat))/sum(conf_mat)
+```
+**5-Numeric Answer (AUTOGRADED on Canvas)**:------>  0.1701 
+
+### Question 6 **(1 point)**:
+Suppose we classify predicted purchases as "MM"" if the probability of purchasing Minute Maid is > .9, as "CH" if the probability of purchasing Minute Maid is < .1, and NA otherwise. What is the classification error rate among purchases for which we make a (non-NA) prediction? Enter your answer to 3 decimal places.
+
+**Numeric Answer (AUTOGRADED on Canvas)**:------> 0.049 
+```{r}
+probabilities = predict(fit_OJ, type = "prob")
+probabilities_modified <- probabilities %>%
+  mutate(OJ_class.5 = case_when(MM > .9 ~ "MM",
+                                MM < .1 ~ "CH",
+                                TRUE ~ NA_character_))
+#******see webwork 8c and double check the calculations on a different computer. ***
+#c. What is the misclassification error rate among observations for which we make a prediction a(non-NA) prediction?
+conf_mat = table(predicted = probabilities_modified$OJ_class.5, actual = OJ$Purchase) 
+1-sum(diag(conf_mat))/sum(conf_mat)
+
+```
+### Question 7 **(3 points)**:
+Write the R code you used to answer the previous question. 
+
+**Text Answer**: #Rewritten from Q6
+```{r}
+probabilities = predict(fit_OJ, type = "prob")
+probabilities_modified <- probabilities %>%
+  mutate(OJ_class.5 = case_when(MM > .9 ~ "MM",
+                                MM < .1 ~ "CH",
+                                TRUE ~ NA_character_))
+
+conf_mat = table(predicted = probabilities_modified$OJ_class.5, actual = OJ$Purchase) 
+1-sum(diag(conf_mat))/sum(conf_mat)
+
+```
+### Question 8 **(2 points)**:
+
+If we use a probability threshold of .9 as in the previous two questions, for how many purchases do we fail to make a prediction?  
+In other words, for how many purchases is the prediction *NA*
+
+**Numeric Answer (AUTOGRADED on Canvas)**: 603	 
+
+```{r}
+probabilities = predict(fit_OJ, type = "prob")
+probabilities_modified <- probabilities %>%
+  mutate(OJ_class.5 = case_when(MM > .9 ~ "MM",
+                                MM < .1 ~ "CH",
+                                TRUE ~ NA_character_))
+
+probabilities_modified %>%
+group_by(OJ_class.5) %>% 
+summarise(n()) 
+
+```
+### Question 9 **(2 points)**:
+
+View the Lek profile of the model. Which of the following accurately describe the relationship among the variables? Select all that apply. 
+
+```{r}
+#gives us an understanding of the relationship between each predictor variable and the response.
+
+lekprofile(fit_OJ)
+
+```
+
+**Multiple SELECT Answer (AUTOGRADED on Canvas)**:  
+  
+- The association between PriceDiff and Purchase is strongest for customers with low values of LoyalCH. FALSE
+
+- *The association between SalePriceMM and Purchase is stronger when the PriceDiff is at a maximum than when PriceDiff is at a minimum. TRUE
+
+- *LoyalCH and Purchase are negatively associated.* TRUE
+
+- PriceDiff and Purchase are positively associated. FALSE
+
+## Problem 2: Using an Artificial Neural Network to Model Salaries
+
+In this problem, you will use an artificial neural network to model the salaries of baseball players. 
+
+**Important**:  For this problem, your answers may vary depending on your computer's processor; thus, there are no numeric autograded parts.
+
+### Question 10 **(3 points)**:
+
+**Data Set**: Load the **Hitters** data set in the **ISLR** package. (Similar to WW5)
+
+Remove any rows with missing Salary data.  
+
+Create new variables as follows, adding to the data frame in the order listed:
+
+1. **League01**, which equals 0 if **League** = "A" and equals 1 if **League** = "N".   
+2. **Division01**, which equals 0 if **Division** = "E" and equals 1 if **Division** = "W".  
+3. **NewLeague01**, which equals 0 if **NewLeague** = "A" and equals 1 if **NewLeague** = "N".  
+
+*Do not* convert the new variables to factors.  *Remove* the old variables (**League**, **NewLeague**, and **Division**) from the data frame.  
+
+Enter your R code below. 
+
+**Code Answer**: 
+```{r, echo=TRUE}
+data("Hitters")
+#head(Hitters)
+#summary(Hitters)
+```
+
+```{r}
+my_hitters <- Hitters %>%
+ filter(!is.na(Salary)) %>% ##Remove any rows with missing Salary data
+ mutate(League01 = ifelse(League == "A", 0, 1),
+ Division01 = ifelse(Division == "E", 0, 1),
+ NewLeague01 = ifelse(NewLeague == "A", 0, 1)) %>%
+ select(-c(League, NewLeague, Division))
+```
+### Question 11 **(4 points)**:
+
+Set the random seed equal to 10 again.  We will fit an artificial neural network with 5 hidden nodes to model **Salary** as a function of all other variables in the data set.  Use `caret` to perform 10-fold cross-validation to select the best decay rate, $\lambda$, from the set 1, 1.1, 1.2, ..., 1.9, 2.
+
+- Tell `caret` to center and scale the data.
+- Use a linear output function.
+- To ensure convergence, use `maxit = 2000`.
+
+Enter your R code below. 
+
+
+**Code Answer**: 
+```{r, echo=TRUE}
+set.seed(10)
+data_used = Hitters_clean
+ctrl = trainControl(method = "cv", number = 10)
+fit_hitters = train(Salary ~ .,
+             data = data_used,
+             method = "nnet",
+             tuneGrid = expand.grid(size = 5, decay = seq(1, 2, .1)),
+             preProc = c("center", "scale"),
+             linout = TRUE,
+             maxit = 2000,
+             trace = FALSE,
+             trControl = ctrl)
+
+fit_hitters
+```
+
+```{r}
+#verify convergence
+fit_hitters$finalModel$convergence #to check for 0 - to see if model converged? yes
+```
+
+### Question 12 **(2 points)**:
+
+
+Make a graph of the RMSE as a function of $\lambda$. Add something to your graph (a title, a label, a line, ...) to indicate the value of $\lambda$ that optimizes the RMSE.  Use **Insert** -> **Image** to upload your graph to this question on Canvas. 
+
+- It may be helpful to refer to the `$results` component of your `caret` object. 
+
+
+**Graph Answer**: 
+
+```{r}
+#graphing the RMSE as a function of the size and the decay parameter.
+
+fit_hitters$results %>%
+  gf_point(RMSE ~ size, col =~ factor(decay))
+optimisezed_rmse <- fit_hitters$results %>% slice(which.min(fit_hitters$results$RMSE))
+opt_decay <- optimisezed_rmse[1,"decay"]
+opt_rmse <-  optimisezed_rmse[1,"RMSE"]
+fit_hitters$results %>%
+  gf_point(RMSE ~ decay, col =~ factor(decay))%>%
+  gf_vline(xintercept = opt_decay, color = "red") %>%
+  gf_vline(xintercept = opt_decay, color = "red") %>%
+  gf_hline(yintercept = opt_rmse, color = "green") %>%
+  gf_label((opt_rmse +5)~ opt_decay, label = paste("Optimum size = ", opt_decay), color = "red") 
+
+```
+
+### Question 13 **(1 point)**:
+
+Apply Garson's algorithm to the final model from `caret`. Use **Insert** -> **Image** to upload your graph to this question on Canvas. 
+
+**Graph Answer**:
+```{r}
+garson(fit_hitters) + theme(axis.text.x = element_text(angle = 45))
+```
+```{r}
+#for interst
+varImp(fit_hitters)
+```
+
+### Question 14 **(1 point)**: Hits and CHits
+According to Garson's algorithm, which _two_ variables are most important in predicting **Salary** 
+
+**Text Answer**: Runs and CHits
+
+### Question 15 **(2 points)**:
+Make a set of example points with realistic values of `Hits` and all other predictor variables held constant at their medians.  (It may be helpful to refer to your notes about random forests).
+
+Use the final model from `caret` to predict the salary of the players in your set of example points.  Make a graph of predicted salary as a function of `Hits`.  Use **Insert** -> **Image** to upload your graph to this question on Canvas. 
+
+```{r}
+median_input = Hitters_clean %>%
+  mutate(across(c(-Hits), median)) %>% 
+  select(c(-Salary))
+median_pred <- median_input %>%
+  mutate(pred_P_salary = predict(fit_hitters, median_input))
+
+median_pred %>%
+  gf_point(pred_P_salary ~ Hits, color =~ Hits) %>%
+  gf_labs(title = "Predicted Salary As a Function of 'Hits'")%>%
+  gf_refine(scale_color_gradient(low = "darkblue", high = "red"))
+
+```
+### Question 16 **(3 points)**:
+- On what range of values does the relationship between `Hits` and predicted salary agree with your expectations?  
+
+- On what range of values does `Hits` have little effect on predicted salary?
+
+- Suggest a possible explanation for why `Hits` has little effect on predicted salary in this range.  (For example, what other factors may have greater influence on salary, for players with `Hits` in this range?).
+
+If you are not familiar with baseball, it may be helpful to read the first two paragraphs of [the Wikipedia page on baseball](https://en.wikipedia.org/wiki/Baseball).w
+
+**Text Answer**: 
+For	Hits between	125	and	200,	the	relationship	between	Hits and	predicted	salary	is	
+positive,	which	agrees	with	my	expectations.
+• Hits has	essentially	no	effect	on	predicted	salary	(for	players	with	median	values	of	
+other	variables)	when	the	number	of	hits	is	less	than	100.
+• One	possible	explanation	is	that	the	group	of players	with	0-100	hits	in	the	season	
+includes	some	players	who	are	weaker	overall,	who	are	paid	less,	and	some	players	
+who	are	weak	or	average	hitters,	but	who	are	outstanding	at	fielding	the	ball,	so	they	
+are	paid	more.	For	these	players,	variables	such as	Errors,	PutOuts,	and	Assists	may	be	
+more	informative	for	predicting	salary.
+
+### Question 17 **(2 points)**:
+
+If your goal was to optimize the performance of this model, what would you try next? Suggest **two** ideas. 
+
+**Text Answer**: 
+I	would	start	by	building	a	set	of	predictor	variables	with	reduced	correlations	between	them,	either	by	using	Principal	Components	Analysis	or	by	regressing	each	predictor	variable	on	the	others	and	extracting	the	residuals.	This	is	likely	to	be	helpful,	because	we	saw	in	the	Decision	Trees	homework	assignment	that	several	of	the	predictors	are	highly	correlated. Other	possible	answers	could	involve	using	cross-validation	to	select	the	number	of	hidden	nodes;	duplicating	the	data	set	and	adding	noise;	or	using	early	stopping.	(Note	that	early	stopping is	more	challenging	to	implement	with	nnet()	than	the	other	approaches.)
+
+
+
+

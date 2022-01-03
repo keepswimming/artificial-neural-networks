@@ -1,0 +1,224 @@
+---
+title: "Lesson 10 Examples"
+author: "Rita Miller"
+date: "6/29/2021"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Can we predict the species of iris from its petal length and sepal length?
+```{r, message=FALSE}
+library(caret)
+#fit neural networks using caret using the n net method, which is available in the nnet package, and this is good for fitting neural networks with a single hidden layer.
+library(nnet)
+library(NeuralNetTools) #visualize our model using the plot net function, which is in the package neural net tools.
+library(ggformula)
+library(dplyr)
+library(reshape2) # for melt
+```
+
+```{r}
+data_used = iris
+set.seed(100)
+
+ctrl = trainControl(method = "cv", number = 5)
+fit_species = train(Species ~ Petal.Length + Sepal.Length,
+                    data = data_used,
+                    method = "nnet",
+                    tuneGrid = expand.grid(size = 1, decay = 0),#size is the number of hidden nodes & decay is the weight decay parameter, lambda. we'll fit a single model with one hidden node and no weight decay.
+                    preProc = c("center", "scale"), #center & scale/standardize the data, this prevents 1 predictor from dominating the model. 
+                    trControl = ctrl)
+
+fit_species
+#outputs the value of the cost function after every 10 iterations.
+```
+
+```{r}
+
+fit_species$finalModel$convergence
+#check the convergence of the final model fit on the full data set. The value 1 indicates that this final model did not converge, so we need to run the model for more iterations.
+```
+
+Increase max iterations.  4 of the 5 folds (and the model fit on the full data set) converge within 500 iterations, but one requires over 4000.
+```{r}
+
+set.seed(100)
+ctrl = trainControl(method = "cv", number = 5)
+fit_species = train(Species ~ Petal.Length + Sepal.Length,
+                    data = data_used,
+                    method = "nnet",
+                    tuneGrid = expand.grid(size = 1, decay = 0),
+                    preProc = c("center", "scale"),
+                    maxit = 5000,
+                    trace = FALSE, #suppress printing the cost func q 10 iterations
+                    trControl = ctrl)
+
+fit_species
+
+```
+```{r}
+fit_species$finalModel$convergence #to check for 0 - to see if model converged
+```
+
+```{r}
+summary(fit_species)
+#the summary function, we can see a reminder of what the model was, two input nodes, one for each predictor variable, three output nodes, one for each level of the categorical response variable, and one hidden node, as well as the weights that apply to each of the edges between those nodes.
+```
+Create a pdf with the neural net graph.
+```{r}
+
+pdf("iris.pdf", width = 11, height = 8.5)
+
+par(mar = c(.1, .1, .1, .1))
+plotnet(fit_species, y_names = levels(iris$Species))
+
+dev.off()
+
+```
+
+```{r}
+
+head(predict(fit_species))
+
+head(predict(fit_species, type = "prob"))
+#the predict function to view either the predicted categories or the predicted probabilities of each of our observations in the
+#data set.
+```
+
+```{r}
+
+varImp(fit_species)
+#To see which variables are most important in our model, we can use either the var imp function in the carrot package, or the Garson function in the neural net tools package.
+```
+
+```{r}
+
+garson(fit_species)
+
+```
+
+Interpreting effect of petal length
+```{r}
+
+example_data <- iris %>%
+  select(Petal.Length) %>%
+  mutate(Sepal.Length = median(iris$Sepal.Length))#holding sepal length k at its median
+
+example_data <- example_data %>%
+  mutate(P_virginica = predict(fit_species, 
+                               newdata = example_data, 
+                               type = "prob")[ ,3])
+
+example_data %>%
+  gf_line(P_virginica ~ Petal.Length)
+
+```
+
+## Predicting sepal width
+#artificial neural network for a regression problem, using petal length and width and sepal length to predict the sepal width of the irises.
+```{r, results = 'hide'}
+
+data_used = iris
+set.seed(100)
+ctrl = trainControl(method = "cv", number = 5)
+fit_sepal = train(Sepal.Width ~ .-Species,
+                  data = data_used,
+                  method = "nnet",
+                  tuneGrid = expand.grid(size = 1:5, 
+                                         decay = c(0, .5, 10^(-c(1:7)))),
+                  preProc = c("center", "scale"),
+                  linout = TRUE, #argument lin out equals true, to specify that our output in the output layer should use a linear function, not the sigmoid function.
+                  maxit = 500,
+                  trace = FALSE,
+                  trControl = ctrl)
+
+```
+
+```{r}
+#graphing the RMSE as a function of the size and the decay parameter.
+
+fit_sepal$results %>%
+  gf_point(RMSE ~ size, col =~ factor(decay))
+
+fit_sepal$results %>%
+  gf_point(RMSE ~ size, col =~ factor(decay)) %>%
+  gf_refine(coord_cartesian(xlim = c(0, 5), ylim = c(0.25, 0.35)))#If we wanted to zoom in on this graph to focus on the region that had the lowest RMSE, we could use the GF refine function with the argument Cord Cartesian to specify the x and y limits of the region we wanted to focus on. 
+
+```
+
+```{r}
+
+olden(fit_sepal)
+#To view the variable importance of this model, we could use a Garson plot or the var imp function from the caret package. But another option is an olden plot using the function olden available in the neural net tools package. This algorithm not only shows us the magnitude of the variable importance, but also shows us the direction of the association between the predictor variable and the response.
+```
+
+```{r}
+#We can view the association in another way by using a scatter plot of the observed value of sepal width as a function of the predictor variables.
+
+iris %>%
+  gf_smooth(Sepal.Width ~ Petal.Length, method = "lm") %>%
+  gf_point(Sepal.Width ~ Petal.Length, color =~ Species) 
+  
+```
+```{r}
+#gives us an understanding of the relationship between each predictor variable and the response.
+
+lekprofile(fit_sepal)
+
+```
+
+## Do-it-yourself Lek profile
+```{r}
+Sepal.quantiles <- iris %>%
+  summarise(quantile(Sepal.Length, seq(0, 1, by = .2)))
+Sepal.quantiles
+```
+
+```{r}
+head(data.frame(Petal.Length = iris$Petal.Length, 
+           Sepal.Length = Sepal.quantiles[1,],
+           row.names = NULL)) # prevents a warning about row names
+```
+
+
+```{r}
+example_data = iris %>%
+  select(Petal.Length) 
+
+for(ii in 1:6){ # iterate over the quantiles of Sepal.Length
+example_data = cbind(example_data,
+                     predict(fit_species, 
+                     newdata = data.frame(Petal.Length = iris$Petal.Length, 
+                                  Sepal.Length = Sepal.quantiles[ii, ],
+                                  row.names = NULL), 
+                     type = "prob")[, 3]) # Prob(virginica)
+} # end iteration over quantiles
+                     
+names(example_data) = c("Petal.Length", "min", "q20", "q40", "q60", "q80", "max")
+# Note that "min" is actually the *prediction* for a data point with that row's value of Petal.Length
+# and Sepal.Length set equal to min(Sepal.Length).
+# Similarly, q20 is the prediction for Sepal.Length set equal to the 20th percentile.
+head(example_data)                   
+```
+But this doesn't make a legend for us:
+```{r}
+example_data %>%
+  gf_line(min ~ Petal.Length) %>%
+  gf_line(q20 ~ Petal.Length)
+```
+"Melt" the data to turn columns into rows
+```{r}
+example_data2 = melt(example_data, id.vars = "Petal.Length", measure.vars = c("min", "q20", "q40", "q60", "q80", "max"))
+
+head(example_data2)
+```
+```{r}
+names(example_data2) = c("Petal.Length", "group", "prediction")
+example_data2 %>%
+  gf_line(prediction ~ Petal.Length, col =~ group) %>%
+  gf_labs(title = "Predicted Prob(virginica) as a function of Petal.Length",
+          subtitle = "Holding Sepal.Length constant at its quantiles")
+```
